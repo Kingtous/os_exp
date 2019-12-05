@@ -574,186 +574,11 @@ public:
 
 // 实验3：页面调度
 
-#define INS_PER_PAGE 5
-#define MEM_BLOCK_PER_JOB 2
+#define INS_PER_PAGE 10
+#define MEM_BLOCK_PER_JOB 3
 #define STATUS_ERROR -1
+#define MAXINT 2147483647
 set<int> exp3_s;
-
-class PageManager{
-public:
-
-    int mem_block_num;
-    int ** mem;
-
-    PageManager(){
-        mem_block_num = MEM_BLOCK_PER_JOB;
-        mem = (int **)malloc(sizeof(int*)*mem_block_num);
-        for (int i = 0; i < mem_block_num; ++i) {
-            mem[i]= (int *)malloc(sizeof(int)*2);
-        }
-        for (int i = 0; i < mem_block_num; ++i) {
-            for (int j = 0; j < 2; ++j) {
-                mem[i][j] = STATUS_ERROR;
-            }
-        }
-    }
-
-    // 计算指令应该属于哪一页
-    int calPage(int ins_id){
-        ins_id -= (ins_id%INS_PER_PAGE);
-        return ins_id/INS_PER_PAGE;
-    }
-
-    int locateMem(int num){
-        for (int i = 0; i < mem_block_num; ++i) {
-            if (mem[i][0] == STATUS_ERROR || mem[i][1]==STATUS_ERROR){
-                //未初始化
-                continue;
-            }
-            if (num>=mem[i][0] && num<=mem[i][1]){
-                return i;
-            }
-        }
-        return STATUS_ERROR;
-    }
-
-    void dropMem(int num){
-        mem[num][0] = STATUS_ERROR;
-        mem[num][1] = STATUS_ERROR;
-    }
-
-    void changePage(int memoryNum,int newins){
-        newins -= (newins%INS_PER_PAGE);
-        mem[memoryNum][0] = newins+1;
-        mem[memoryNum][1] = newins+INS_PER_PAGE;
-    }
-
-    void exchangePage(int page1,int page2){
-        int tmp1 = mem[page1][0];
-        int tmp2 = mem[page2][1];
-        mem[page1][0] = mem[page2][0];
-        mem[page1][1] = mem[page2][1];
-        mem[page2][0] = tmp1;
-        mem[page2][1] = tmp2;
-    }
-
-    bool queryFIFO(int num){
-        int id =locateMem(num);
-        if (id == STATUS_ERROR){
-            //未装载
-            int j;
-            for (j = 0; j < mem_block_num; ++j) {
-                if(mem[j][0] == STATUS_ERROR){
-                    break;
-                }
-            }
-            if (j != mem_block_num){
-                //有空位
-                changePage(j,num);
-            }
-            else{
-                // TODO 装在数组尾部
-                for (int i = 0; i < mem_block_num - 1; ++i) {
-                    exchangePage(i,i+1);
-                }
-                changePage(mem_block_num-1,num);
-            }
-            return false;
-        }
-        else{
-            // 有
-            return true;
-        }
-    }
-
-    int findLatest(int* serial,int length,int index){
-        // OPT置换、此处转为指令为单位
-        int statistic[MEM_BLOCK_PER_JOB];
-        int cnt = MEM_BLOCK_PER_JOB;
-        for (int k = 0; k < MEM_BLOCK_PER_JOB; ++k) {
-            statistic[k] = 0;
-        }
-        // index 不在内存
-        for (int i = index+1; i < length; ++i) {
-            int m =locateMem(serial[i]);
-            if (m != STATUS_ERROR){
-                // 找到了
-                if(statistic[m] == 0){
-                    cnt--;
-                    statistic[m] = STATUS_ERROR;
-                    if (cnt == 1){
-                        break;
-                    }
-                }
-            }
-        }
-        //只剩最后一个或者多个了，就是结果
-        for (int j = 0; j < mem_block_num; ++j) {
-            if (statistic[j] == 0){
-                return j;
-            }
-        }
-        return STATUS_ERROR;
-    }
-
-    bool queryOPT(int* ins_serial,int serial_length,int num,int index){
-        // 注意：ins_serial是指令，index是指令的下标，含有两条指令数
-        int id =locateMem(num);
-        if (id == STATUS_ERROR){
-            //未装载
-            int j;
-            for (j = 0; j < mem_block_num; ++j) {
-                if(mem[j][0] == STATUS_ERROR){
-                    break;
-                }
-            }
-            if (j != mem_block_num){
-                //有空位
-                changePage(j,num);
-            }
-            else{
-                // TODO 选择最久不会用的
-                int page = findLatest(ins_serial,serial_length,index);
-                //cout<<"OPT置换"<<page<<endl;
-                changePage(page,num);
-            }
-            return false;
-        }
-        else{
-            // 有
-            return true;
-        }
-    }
-
-    bool queryLRU(int num){
-        int n = locateMem(num);
-        bool result = queryFIFO(num);
-        if (result){
-            // 证明可以提取
-            int j;
-            for (j = 0; j < mem_block_num; ++j) {
-                if(mem[j][0] == STATUS_ERROR){
-                    break;
-                }
-            }
-            if (j == mem_block_num){
-                //内存块满了,从n开始提取
-                for (int i = n; i < mem_block_num - 1; ++i) {
-                    exchangePage(i,i+1);
-                }
-            }
-            else{
-                //内存块本来就没满，n->j-1，因为j是空的
-                for (int i = n; i < j-2; ++i) {
-                    exchangePage(i,i+1);
-                }
-            }
-        }
-        return result;
-    }
-
-};
-
 
 int getRandom(int minLap,int maxLap){
     int n = rand()%(maxLap-minLap+1)+minLap;
@@ -896,114 +721,199 @@ public:
             }
             ++times;
         }
-        // 返回一个可用的序列
-        return this->ins;
+        // 返回一个可用的序列，转换为页面而不是指令
+        int* ss=(int*)malloc(sizeof(int)*block_num*2);
+        int index =0;
+        for (int j = 0; j < block_num; ++j) {
+            ss[index] = (ins[j]*2-1-(ins[j]*2-1)%INS_PER_PAGE)/INS_PER_PAGE;
+            ss[index+1] = (ins[j]*2-(ins[j]*2)%INS_PER_PAGE)/INS_PER_PAGE;
+            index+=2;
+        }
+        return ss;
     }
 };
 
+// 注意：页数是从0-9才是10
 #include <queue>
-#define ALGORITHM_OPT 1000
-#define ALGORITHM_FIFO 1001
-#define ALGORITHM_LRU 1002
 
 class SwapAnalyzer{
 public:
-    int * serial;
+
+    int *serial;
     int length;
-    int total_times;
-    int lack_times;
-    PageManager* manager;
 
-    SwapAnalyzer(int * serial,int length){
-        this -> serial = serial;
-        this->length = length/2;
-    }
+    int mem[MEM_BLOCK_PER_JOB];
+    int total_size,lack_size;
 
-    void analyze(int ALGO){
-        manager = new PageManager();
-        switch (ALGO)
-        {
-        case ALGORITHM_OPT:
-            opt();
-            break;
-        case ALGORITHM_FIFO:
-            fifo();
-            break;
-        case ALGORITHM_LRU:
-            lru();
-            break;
-        default:
-            cout<<"非法请求"<<endl;
-            break;
+    SwapAnalyzer(int *serial, int length) : serial(serial), length(length) {reset();}
+
+
+    void mem_pop(){
+        for (int i = 0; i < MEM_BLOCK_PER_JOB-1; ++i){
+            int page = mem[i];
+            mem[i]=mem[i+1];
         }
-        cout<<"总次数："<<total_times<<"，缺页次数："<<lack_times<<"，缺页率："<<(float)lack_times/total_times*100.0<<"%"<<endl;
-
     }
 
-    void reset(){
-        total_times=0;
-        lack_times=0;
+    void mem_exchange(int old_page_id,int new_page_id){
+        int page = mem[old_page_id];
+        mem[old_page_id] = mem[new_page_id];
+        mem[new_page_id] = page;
+    }
+
+    void mem_in(int index,int page){
+        mem[index] = page;
+    }
+
+    void mem_insert_tail(int new_page){
+        mem[MEM_BLOCK_PER_JOB-1]=new_page;
+    }
+
+    int mem_find(int page){
+        int index = STATUS_ERROR;
+        for (int i = 0; i < MEM_BLOCK_PER_JOB ; ++i) {
+            if (mem[i] == STATUS_ERROR){
+                continue;
+            }
+            if(mem[i]==page){
+                index = i;
+                break;
+            }
+        }
+        return index;
+    }
+
+    int isFull(){
+        for (int i = 0; i < MEM_BLOCK_PER_JOB; ++i) {
+            if (mem[i]==STATUS_ERROR){
+                return i;
+            }
+        }
+        return STATUS_ERROR;
+    }
+
+    int getNextDistance(int beginIndex,int value){
+        int dis = 1;
+        for (int i = beginIndex; i < length; ++i) {
+            if (serial[i]==value){
+                return dis;
+            }
+            else{
+                dis++;
+            }
+        }
+        return STATUS_ERROR;
     }
 
     void opt(){
-        cout<<">>>OPT算法\t";
         reset();
-        int *ext_serial = (int*)malloc(sizeof(int)*length *2);
-        int index = 0 ;
-        for (int j = 0; j < length; ++j) {
-            // 连续的两条指令
-            int b1 = serial[j]*2-1;
-            ext_serial[index]=b1;
-            ext_serial[index+1]=b1+1;
-            index+=2;
-        }
+        cout<<">>> OPT算法"<<endl;
         for (int i = 0; i < length; ++i) {
-            int b1 = serial[i]*2-1;
-            if(!manager->queryOPT(ext_serial,length*2,b1,i*2-1)){
-                lack_times++;
+            //对应每一条访存页
+            int page = serial[i];
+            int point = isFull();
+            int result = mem_find(page);
+            if(result == STATUS_ERROR){
+                if (point != STATUS_ERROR){
+                    // point空着
+                    mem_in(point,page);
+                }
+                else{
+                    // 没空
+                    // 需要置换
+                    // 选择一个最久未使用的
+                    int maxIndex=STATUS_ERROR;
+                    int maxDis= -1;
+                    for (int j = 0; j < MEM_BLOCK_PER_JOB; ++j) {
+                        int dis = getNextDistance(i+1,mem[j]);
+                        if (dis>maxDis || dis == STATUS_ERROR){
+                            maxIndex = j;
+                            maxDis = dis;
+                        }
+                        if(dis == STATUS_ERROR){
+                            break;
+                        }
+                    }
+                    // 置换maxIndex
+                    mem_in(maxIndex,page);
+                }
+                lack_size++;
             }
-            if(!manager->queryOPT(ext_serial,length*2,b1+1,i*2)){
-                lack_times++;
-            }
-            total_times+=2;
+            total_size++;
         }
-        cout<<endl;
-        free(ext_serial);
+        cout<<"总指令数："<<total_size<<"，缺页次数："<<lack_size<<"，缺页率："<<(float)lack_size/total_size*100.0<<"%"<<endl;
+
     }
 
     void fifo(){
-        cout<<">>>FIFO算法\t";
         reset();
+        cout<<">>> FIFO算法"<<endl;
         for (int i = 0; i < length; ++i) {
-            int b1 = serial[i]*2-1;
-            int b2 = b1+1;
-            if(!manager->queryFIFO(b1)){
-                lack_times++;
+            //对应每一条访存页
+            int page = serial[i];
+            int point = isFull();
+            int result = mem_find(page);
+            if(result == STATUS_ERROR){
+                if (point != STATUS_ERROR){
+                    // point空着
+                    mem_in(point,page);
+                    lack_size++;
+                }
+                else{
+                    // 没空
+                    // 需要置换
+                    mem_pop();
+                    mem_insert_tail(page);
+                    lack_size++;
+                }
             }
-            if(!manager->queryFIFO(b2)){
-                lack_times++;
-            }
-            total_times+=2;
+            total_size++;
         }
-        cout<<endl;
+        cout<<"总指令数："<<total_size<<"，缺页次数："<<lack_size<<"，缺页率："<<(float)lack_size/total_size*100.0<<"%"<<endl;
     }
 
     void lru(){
-        cout<<">>>LRU算法\t";
-        // 初始化变量
         reset();
+        cout<<">>> LRU算法"<<endl;
         for (int i = 0; i < length; ++i) {
-            int b1 = serial[i]*2-1;
-            int b2 = b1+1;
-            if(!manager->queryLRU(b1)){
-                lack_times++;
+            //对应每一条访存页
+            int page = serial[i];
+            int point = isFull();
+            int result = mem_find(page);
+            if(result == STATUS_ERROR){
+                if (point != STATUS_ERROR){
+                    // point空着
+                    mem_in(point,page);
+                    lack_size++;
+                }
+                else{
+                    // 没空
+                    // 需要置换
+                    mem_pop();
+                    mem_insert_tail(page);
+                    lack_size++;
+                }
             }
-            if(!manager->queryLRU(b2)){
-                lack_times++;
+            else{
+                // LRU置换新 result号放至最后
+                int endi = (point == STATUS_ERROR)?MEM_BLOCK_PER_JOB-1:point-1;
+                for (int j = result; j < endi; ++j) {
+                    mem_exchange(j,j+1);
+                }
             }
-            total_times+=2;
+            total_size++;
         }
-        cout<<endl;
+        cout<<"总指令数："<<total_size<<"，缺页次数："<<lack_size<<"，缺页率："<<(float)lack_size/total_size*100.0<<"%"<<endl;
     }
 
+private:
+    void reset(){
+        for (int &i : mem) {
+            i = STATUS_ERROR;
+        }
+        lack_size = 0;
+        total_size = 0;
+    }
 };
+
+

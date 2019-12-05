@@ -8,21 +8,18 @@
 #include <iostream>
 #include "cdef.h"
 
-#define JOB_INS_NUM 20
+#define JOB_INS_NUM 320
 
 int main(int argc, char const *argv[])
 {
     // 随机化种子
     srand((long)time(0));
     MemoryManager mManager(JOB_INS_NUM);
-    int * serial = mManager.simulate();
-    SwapAnalyzer sAnalyzer(serial,JOB_INS_NUM);
-//     OPT
-    sAnalyzer.analyze(ALGORITHM_OPT);
-    // FIFO
-    sAnalyzer.analyze(ALGORITHM_FIFO);
-    // LRU
-    sAnalyzer.analyze(ALGORITHM_LRU);
+    int *serial = mManager.simulate();
+    SwapAnalyzer analyzer(serial,JOB_INS_NUM);
+    analyzer.opt();
+    analyzer.fifo();
+    analyzer.lru();
     return 0;
 }
 
